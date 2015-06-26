@@ -19,7 +19,7 @@
 
 class EcomDev_PHPUnit_Model_Fixture_Processor_Eav
     extends Mage_Core_Model_Abstract
-    implements EcomDev_PHPUnit_Model_Fixture_Processor_Interface
+    implements EcomDev_PHPUnit_Model_Fixture_ProcessorInterface
 {
 
     const STORAGE_KEY = 'entities';
@@ -43,10 +43,10 @@ class EcomDev_PHPUnit_Model_Fixture_Processor_Eav
     /**
      * Does nothing
      *
-     * @param EcomDev_PHPUnit_Model_Fixture_Interface $fixture
+     * @param EcomDev_PHPUnit_Model_FixtureInterface $fixture
      * @return EcomDev_PHPUnit_Model_Fixture_Processor_Eav
      */
-    public function initialize(EcomDev_PHPUnit_Model_Fixture_Interface $fixture)
+    public function initialize(EcomDev_PHPUnit_Model_FixtureInterface $fixture)
     {
         return $this;
     }
@@ -55,7 +55,7 @@ class EcomDev_PHPUnit_Model_Fixture_Processor_Eav
      * Retrieves eav loader for a particular entity type
      *
      * @param string $entityType
-     * @return EcomDev_PHPUnit_Model_Mysql4_Fixture_Eav_Abstract
+     * @return EcomDev_PHPUnit_Model_Mysql4_Fixture_AbstractEav
      */
     protected function _getEavLoader($entityType)
     {
@@ -78,21 +78,26 @@ class EcomDev_PHPUnit_Model_Fixture_Processor_Eav
      *
      * @param array                                   $data
      * @param string                                  $key
-     * @param EcomDev_PHPUnit_Model_Fixture_Interface $fixture
+     * @param EcomDev_PHPUnit_Model_FixtureInterface $fixture
      *
      * @return EcomDev_PHPUnit_Model_Fixture_Processor_Eav
      */
-    public function apply(array $data, $key, EcomDev_PHPUnit_Model_Fixture_Interface $fixture)
+    public function apply(array $data, $key, EcomDev_PHPUnit_Model_FixtureInterface $fixture)
     {
         $eavLoaders = array();
 
         $this->getResource()->beginTransaction();
 
         foreach ($data as $entityType => $values) {
-            $eavLoaders[] = $this->_getEavLoader($entityType)
+            $eavLoaders[$entityType] = $this->_getEavLoader($entityType)
                 ->setFixture($fixture)
-                ->setOptions($fixture->getOptions())
-                ->loadEntity($entityType, $values);
+                ->setOptions($fixture->getOptions());
+            
+            if ($eavLoaders[$entityType] instanceof EcomDev_PHPUnit_Model_Mysql4_Fixture_RestoreAwareInterface) {
+                $eavLoaders[$entityType]->saveData($entityType);
+            }
+            
+            $eavLoaders[$entityType]->loadEntity($entityType, $values);
         }
 
         $this->getResource()->commit();
@@ -110,32 +115,51 @@ class EcomDev_PHPUnit_Model_Fixture_Processor_Eav
      *
      * @param array[] $data
      * @param string $key
-     * @param EcomDev_PHPUnit_Model_Fixture_Interface $fixture
+     * @param EcomDev_PHPUnit_Model_FixtureInterface $fixture
      *
      * @return EcomDev_PHPUnit_Model_Fixture_Processor_Eav
      */
-    public function discard(array $data, $key, EcomDev_PHPUnit_Model_Fixture_Interface $fixture)
+    public function discard(array $data, $key, EcomDev_PHPUnit_Model_FixtureInterface $fixture)
     {
         $ignoreCleanUp = array();
 
         // Ignore cleaning of entities if shared fixture loaded something for them
         if ($fixture->isScopeLocal()
             && $fixture->getStorageData(self::STORAGE_KEY,
-                                        EcomDev_PHPUnit_Model_Fixture_Interface::SCOPE_SHARED)) {
+                                        EcomDev_PHPUnit_Model_FixtureInterface::SCOPE_SHARED)) {
             $ignoreCleanUp = $fixture->getStorageData(self::STORAGE_KEY,
-                                                      EcomDev_PHPUnit_Model_Fixture_Interface::SCOPE_SHARED);
+                                                      EcomDev_PHPUnit_Model_FixtureInterface::SCOPE_SHARED);
         }
 
+        $typesToRestore = array();
         $this->getResource()->beginTransaction();
         foreach (array_keys($data) as $entityType) {
+            $eavLoader = $this->_getEavLoader($entityType);
+                
             if (in_array($entityType, $ignoreCleanUp)) {
+                if ($eavLoader instanceof EcomDev_PHPUnit_Model_Mysql4_Fixture_RestoreAwareInterface) {
+                    $eavLoader->clearData($entityType);
+                }
                 continue;
             }
-            $this->_getEavLoader($entityType)
-                ->cleanEntity($entityType);
-        }
+            
+            $eavLoader->cleanEntity($entityType);
 
+            if ($eavLoader instanceof EcomDev_PHPUnit_Model_Mysql4_Fixture_RestoreAwareInterface) {
+                $typesToRestore[$entityType] = $eavLoader;
+            }
+        }
         $this->getResource()->commit();
+        
+        if ($typesToRestore) {
+            $this->getResource()->beginTransaction();
+            foreach ($typesToRestore as $entityType => $eavLoader) {
+                $eavLoader->restoreData($entityType)
+                    ->clearData($entityType);
+            }
+            $this->getResource()->commit();
+        }
+        
         return $this;
     }
 }
