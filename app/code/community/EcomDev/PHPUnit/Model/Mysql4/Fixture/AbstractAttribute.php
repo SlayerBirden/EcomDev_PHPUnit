@@ -170,7 +170,6 @@ abstract class EcomDev_PHPUnit_Model_Mysql4_Fixture_AbstractAttribute
 						'attribute_code IN (?)' => $attributeCodes,
 					)
 				);
-			$this->_getWriteAdapter()->commit();
 		} catch (Exception $e) {
 			throw new EcomDev_PHPUnit_Model_Mysql4_Fixture_Exception(
 				sprintf('Unable to clear records for a table "%s"', 'eav/attribute'),
