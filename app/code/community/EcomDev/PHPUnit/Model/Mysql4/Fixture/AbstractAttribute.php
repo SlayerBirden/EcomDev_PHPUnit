@@ -177,8 +177,6 @@ abstract class EcomDev_PHPUnit_Model_Mysql4_Fixture_AbstractAttribute
 			);
 		}
 
-        $this->resetAttributesAutoIncrement();
-
 		return $this;
 	}
 

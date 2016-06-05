@@ -18,7 +18,10 @@
  * @author     Jonathan Day <jonathan@aligent.com.au>
  */
 
-
+/**
+ * Class EcomDev_PHPUnit_Model_Fixture_Processor_Attributes
+ * @method Varien_Db_Adapter_Interface getResource
+ */
 class EcomDev_PHPUnit_Model_Fixture_Processor_Attributes
     extends Mage_Core_Model_Abstract
     implements EcomDev_PHPUnit_Model_Fixture_ProcessorInterface
@@ -129,15 +132,28 @@ class EcomDev_PHPUnit_Model_Fixture_Processor_Attributes
         }
 
         $this->getResource()->beginTransaction();
+        try {
+            foreach (array_keys($data) as $entityType) {
+                if (in_array($entityType, $ignoreCleanUp)) {
+                    continue;
+                }
+                $this->_getAttributeLoader($entityType)
+                    ->cleanAttributes($entityType,$data);
+            }
+            $this->getResource()->commit();
+        } catch (Exception $e) {
+            $this->getResource()->rollBack();
+            throw $e;
+        }
+
+        // now reset auto increments
         foreach (array_keys($data) as $entityType) {
             if (in_array($entityType, $ignoreCleanUp)) {
                 continue;
             }
             $this->_getAttributeLoader($entityType)
-                ->cleanAttributes($entityType,$data);
+                ->resetAttributesAutoIncrement();
         }
-
-        $this->getResource()->commit();
         EcomDev_PHPUnit_Test_Case_Util::replaceRegistry('_singleton/eav/config', null);  //clean out the EAV cache
         return $this;
     }
